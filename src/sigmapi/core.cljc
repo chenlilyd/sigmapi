@@ -708,33 +708,33 @@ max-sum algorithm with the given id")
                   (zipmap (map :id diff) diff))))
     nm (:messages nm)))
 
-(defn learn-variables [graph post priors-keys data]
+(defn learn-variables [graph post priors data]
   (reductions
     (fn [[g post] data-priors]
       (let [
-              p2 (select-keys post (keys priors-keys))
-              p1 (merge (zipmap (vals priors-keys) (map p2 (keys priors-keys))) data-priors)
+              p2 (select-keys post (keys priors))
+              p1 (merge (zipmap (vals priors) (map p2 (keys priors))) data-priors)
               g  (update-factors g p1)
             ]
         [g (normalize-vals (marginals (propagate g)))]))
-    [graph (or post (zipmap (keys priors-keys) (map (comp (partial map P) :value i (:nodes graph)) (vals priors-keys))))] data))
+    [graph (or post (zipmap (keys priors) (map (comp (partial map P) :value i (:nodes graph)) (vals priors))))] data))
 
-(defn learned-variables [{:keys [fg learned marginals priors-keys data] :as model}]
+(defn learned-variables [{:keys [fg learned marginals priors data] :as model}]
   (let [[g m]
           (last
            (learn-variables
-             (or learned (exp->fg :sp/sp fg)) marginals priors-keys data))]
+             (or learned (exp->fg :sp/sp fg)) marginals priors data))]
     (-> model
       (assoc :marginals m)
       (assoc :learned g))))
 
 (defn learn-step
-  [{:keys [fg learned log-marginals priors-keys data] :as model}]
+  [{:keys [fg learned log-marginals priors data] :as model}]
       (let [
               graph (or learned (exp->fg :sp/sp fg))
-              post  (or log-marginals (zipmap (keys priors-keys) (map (comp :value i (:nodes graph)) (vals priors-keys))))
-              p2    (select-keys post (keys priors-keys))
-              p1    (merge (zipmap (vals priors-keys) (map p2 (keys priors-keys))) data)
+              post  (or log-marginals (zipmap (keys priors) (map (comp :value i (:nodes graph)) (vals priors))))
+              p2    (select-keys post (keys priors))
+              p1    (merge (zipmap (vals priors) (map p2 (keys priors))) data)
               g     (update-factors graph p1 :clm)
             ]
         (-> model
