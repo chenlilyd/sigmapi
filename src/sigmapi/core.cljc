@@ -709,11 +709,13 @@ max-sum algorithm with the given id")
     nm (:messages nm)))
 
 (defn learn-variables [graph post priors data]
+  (println ">" priors data)
   (reductions
     (fn [[g post] data-priors]
       (let [
               p2 (select-keys post (keys priors))
               p1 (merge (zipmap (vals priors) (map p2 (keys priors))) data-priors)
+              _ (println " >" data-priors)
               g  (update-factors g p1)
             ]
         [g (normalize-vals (marginals (propagate g)))]))
