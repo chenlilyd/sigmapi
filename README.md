@@ -1,8 +1,7 @@
 # Sigma Pi
 
-## Usage
+An implementation of Factor Graphs and the Sum-Product Algorithm
 
-FIXME
 
 ## License
 
