@@ -52,8 +52,6 @@
     #?(:cljs (:require-macros
       [sigmapi.core :refer [fgtree]])))
 
-(println "cbs ***")
-
 #?(:clj
   (defmacro fgtree [xp]
    (walk/postwalk
