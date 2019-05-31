@@ -221,5 +221,6 @@
     (println (apply str "             " (assoc '[🐐 🐐 🐐] (:your-2nd-choice m2) '🀆 (:door m2) '🚗)))
     (println)
     (println (if (== 1 (:prize-1 m2)) "you won!" "you lost"))
-    (if (== 1 (:prize-1 m2)) '🚗 '🐐)
+    {:result (if (== 1 (:prize-1 m2)) '🚗 '🐐)
+     :model l}
     ))
