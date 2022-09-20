@@ -44,8 +44,9 @@
 
   "
   (:require
-    [clojure.core.matrix :as m]
+    [clojure.math :refer [log pow]]
     [clojure.set :as set]
+    [clojure.core.matrix :as m]
     [loom.graph :as lg]
     [loom.alg :as la]
     [clojure.walk :as walk])
@@ -60,14 +61,6 @@
          `(~(if (vector? x) `vector `list) ~@x)
          x))
      xp)))
-
-(defn log [x]
-  #?(:clj  (Math/log x)
-     :cljs (js/Math.log x)))
-
-(defn pow [x y]
-  #?(:clj  (Math/pow x y)
-     :cljs (js/Math.pow x y)))
 
 (def log2 (log 2))
 
@@ -602,6 +595,30 @@ max-sum algorithm with the given id")
       (not= (into #{} (keys messages))
             (into #{} (mapcat keys (vals messages))))))
 
+(defn print-msgs [{:keys [messages graph nodes] :as model}]
+  (doseq [[to from msg] (mapcat (fn [[to msgs]] (map (partial cons to) msgs)) messages)]
+    (println from "⟶" to (:flow msg) (:repr msg)
+             "sum: " (m/shape (:sum msg))
+             "dfn: " (:dim-for-node msg)
+             "conf" (:configuration msg)
+             "mind" (:mind msg)
+             "min: " (:min msg))
+    (println "    " "val: " (:value msg) (m/shape (:im msg)) "im: " (:im msg))
+    (println "    " "min" (:min msg) "conf" (:configuration msg))))
+
+(defn msgs [{:keys [messages graph nodes] :as model}]
+  (map
+    (fn ([[to from msg]] {:from from :to to :repr (:repr msg)}))
+    (mapcat (fn [[to msgs]] (map (partial cons to) msgs)) messages)))
+
+(defn msg-diff [om nm]
+  (reduce
+    (fn [r [to msgs]]
+      (assoc-in r [:messages to]
+                (let [diff (set/difference (into #{} (vals msgs)) (into #{} (vals (get-in om [:messages to]))))]
+                  (zipmap (map :id diff) diff))))
+    nm (:messages nm)))
+
 (defn propagate
   "Propagate messages on the given model's graph
   in both directions"
@@ -617,7 +634,7 @@ max-sum algorithm with the given id")
 (defn propagate-cycles
   "Propagate messages on the given model's graph
   in both directions"
-  ([m n]
+  ([n m]
     (propagate-cycles message-passing n (assoc m :messages {})))
   ([f n m]
     (last
@@ -695,30 +712,6 @@ max-sum algorithm with the given id")
     (map
       (fn [[id sequence]] [id (= sequence (get config id))])
       sequence-by-id)))
-
-(defn print-msgs [{:keys [messages graph nodes] :as model}]
-  (doseq [[to from msg] (mapcat (fn [[to msgs]] (map (partial cons to) msgs)) messages)]
-    (println from "⟶" to (:flow msg) (:repr msg)
-             "sum: " (m/shape (:sum msg))
-             "dfn: " (:dim-for-node msg)
-             "conf" (:configuration msg)
-             "mind" (:mind msg)
-             "min: " (:min msg))
-    (println "    " "val: " (:value msg) (m/shape (:im msg)) "im: " (:im msg))
-    (println "    " "min" (:min msg) "conf" (:configuration msg))))
-
-(defn msgs [{:keys [messages graph nodes] :as model}]
-  (map
-    (fn ([[to from msg]] {:from from :to to :repr (:repr msg)}))
-    (mapcat (fn [[to msgs]] (map (partial cons to) msgs)) messages)))
-
-(defn msg-diff [om nm]
-  (reduce
-    (fn [r [to msgs]]
-      (assoc-in r [:messages to]
-                (let [diff (set/difference (into #{} (vals msgs)) (into #{} (vals (get-in om [:messages to]))))]
-                  (zipmap (map :id diff) diff))))
-    nm (:messages nm)))
 
 (defn learn-variables [graph post priors data]
   (reductions

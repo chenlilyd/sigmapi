@@ -1,13 +1,14 @@
 (ns sigmapi.test.core
   (:require
     [clojure.test :refer [deftest testing is]]
-    [sigmapi.core :as sp :refer [fgtree make-node  propagate print-msgs msg-diff
+    [sigmapi.core :as sp :refer [fgtree make-node propagate propagate-cycles print-msgs msg-diff
         marginals exp->fg msgs-from-leaves message-passing ln- P
         normalize random-matrix MAP-config combine can-message?
         update-factors]]
     [clojure.core.matrix :as m]
     [loom.graph :as lg]
-    [loom.alg :as la]))
+    [loom.alg :as la]
+    [loom.io :as lio]))
 
 
 (defn
@@ -146,81 +147,182 @@
      'Do you want to pick door No. 2?'
      Is it to your advantage to switch your choice ?
   "
-  [{door-number :correct-door choose-door-number :choose-door dp :dp cp :cp}]
-  (let
-    [model
-     {:fg (fgtree
-       (:host's-choice
-         [:host's-choice|your-1st-choice
-          [
-           [0 1/2 1/2]
-           [1/2 0 1/2]
-           [1/2 1/2 0]
-           ]
-          (:your-1st-choice
-            [:prize|your-1st-choice&door
-             [
-              [[0 1] [1 0] [1 0]]
-              [[1 0] [0 1] [1 0]]
-              [[1 0] [1 0] [0 1]]
-              ]
-             (:door-0 [:p-door-0 [1/3 1/3 1/3]])
-             (:prize-0)]
-            [:p-your-1st-choice [1/3 1/3 1/3]])]
-         [:host's-choice|door
-          [
-           [0 1/2 1/2]
-           [1/2 0 1/2]
-           [1/2 1/2 0]
-           ]
-          (:door [:p-door [1/3 1/3 1/3]])]
-         [:your-2nd-choice|host's-choice
-          [
-           [0 1/2 1/2]
-           [1/2 0 1/2]
-           [1/2 1/2 0]
-           ]
-          (:your-2nd-choice
-            [:your-2nd-choice|your-1st-choice
-             [
-              [0 1/2 1/2]
-              [1/2 0 1/2]
-              [1/2 1/2 0]
-              ]
-             (:your-1st-choice-0 [:p-your-1st-choice-0 [1/3 1/3 1/3]])]
-            [:prize|your-2nd-choice&door
-             [
-              [[0 1] [1 0] [1 0]]
-              [[1 0] [0 1] [1 0]]
-              [[1 0] [1 0] [0 1]]
-              ]
-             (:door-1 [:p-door-1 [1/3 1/3 1/3]])
-             (:prize-1)])]))
-      :priors
-      {:door :p-door
-       :door-0 :p-door-0
-       :door-1 :p-door-1
-       :your-1st-choice :p-your-1st-choice
-       :your-1st-choice-0 :p-your-1st-choice-0}}
-     door (or dp (assoc [0 0 0] door-number 1))
-     choice (or cp (assoc [0 0 0] choose-door-number 1))
-     {m1 :marginals l :learned :as em0}
-       (-> model (assoc :data {:p-door door :p-door-0 door :p-door-1 door :p-your-1st-choice choice :p-your-1st-choice-0 choice}) sp/learn-step)
+  ([]
+   (MHP {}))
+  ([{door-number :correct-door choose-door-number :choose-door dp :dp cp :cp
+    :or {door-number 1 choose-door-number 0}}]
+   (let
+     [model
+      {:fg (fgtree
+             (:host's-choice
+               [:host's-choice|your-1st-choice
+                [
+                 [0 1/2 1/2]
+                 [1/2 0 1/2]
+                 [1/2 1/2 0]
+                 ]
+                (:your-1st-choice
+                  [:prize|your-1st-choice&door
+                   [
+                    [[0 1] [1 0] [1 0]]
+                    [[1 0] [0 1] [1 0]]
+                    [[1 0] [1 0] [0 1]]
+                    ]
+                   (:door-0 [:p-door-0 [1/3 1/3 1/3]])
+                   (:prize-0)]
+                  [:p-your-1st-choice [1/3 1/3 1/3]])]
+               [:host's-choice|door
+                [
+                 [0 1/2 1/2]
+                 [1/2 0 1/2]
+                 [1/2 1/2 0]
+                 ]
+                (:door [:p-door [1/3 1/3 1/3]])]
+               [:your-2nd-choice|host's-choice
+                [
+                 [0 1/2 1/2]
+                 [1/2 0 1/2]
+                 [1/2 1/2 0]
+                 ]
+                (:your-2nd-choice
+                  [:your-2nd-choice|your-1st-choice
+                   [
+                    [0 1/2 1/2]
+                    [1/2 0 1/2]
+                    [1/2 1/2 0]
+                    ]
+                   (:your-1st-choice-0 [:p-your-1st-choice-0 [1/3 1/3 1/3]])]
+                  [:prize|your-2nd-choice&door
+                   [
+                    [[0 1] [1 0] [1 0]]
+                    [[1 0] [0 1] [1 0]]
+                    [[1 0] [1 0] [0 1]]
+                    ]
+                   (:door-1 [:p-door-1 [1/3 1/3 1/3]])
+                   (:prize-1)])]))
+       :priors
+       {:door :p-door
+        :door-0 :p-door-0
+        :door-1 :p-door-1
+        :your-1st-choice :p-your-1st-choice
+        :your-1st-choice-0 :p-your-1st-choice-0}}
+      door (or dp (assoc [0 0 0] door-number 1))
+      choice (or cp (assoc [0 0 0] choose-door-number 1))
+      {m1 :marginals l :learned :as em0}
+      (-> model (assoc :data {:p-door door :p-door-0 door :p-door-1 door :p-your-1st-choice choice :p-your-1st-choice-0 choice}) sp/learn-step)
       m2
-       (-> l (assoc :alg :sp/mxp) sp/change-alg propagate MAP-config)
-     ]
-    (println "  " (select-keys m1 [:door :prize-0 :prize-1 :your-1st-choice :host's-choice :your-2nd-choice]))
-    (println "  " m2)
-    (println)
-    (println "--------")
-    (println)
-    (println (apply str " car is      " (assoc '[🚪 🚪 🚪] (:door m2) '🚗)))
-    (println (apply str " you chose   " (assoc '[🚪 🚪 🚪] (:your-1st-choice m2) '🀆)))
-    (println (apply str " host opened " (assoc '[🚪 🚪 🚪] (:host's-choice m2) '🐐)))
-    (println (apply str " you chose   " (assoc '[🚪 🚪 🚪] (:your-2nd-choice m2) '🀆 (:host's-choice m2) '🐐)))
-    (println (apply str "             " (assoc '[🐐 🐐 🐐] (:your-2nd-choice m2) '🀆 (:door m2) '🚗)))
-    (println)
-    (println (if (== 1 (:prize-1 m2)) "you won!" "you lost"))
-    {:result (if (== 1 (:prize-1 m2)) '🚗 '🐐)
-     :model l}
-    ))
+      (-> l (assoc :alg :sp/mxp) sp/change-alg propagate MAP-config)
+      ]
+     (println "  " (select-keys m1 [:door :prize-0 :prize-1 :your-1st-choice :host's-choice :your-2nd-choice]))
+     (println "  " m2)
+     (println)
+     (println "--------")
+     (println)
+     (println (apply str " car is      " (assoc '[🚪 🚪 🚪] (:door m2) '🚗)))
+     (println (apply str " you chose   " (assoc '[🚪 🚪 🚪] (:your-1st-choice m2) '🀆)))
+     (println (apply str " host opened " (assoc '[🚪 🚪 🚪] (:host's-choice m2) '🐐)))
+     (println (apply str " you chose   " (assoc '[🚪 🚪 🚪] (:your-2nd-choice m2) '🀆 (:host's-choice m2) '🐐)))
+     (println (apply str "             " (assoc '[🐐 🐐 🐐] (:your-2nd-choice m2) '🀆 (:door m2) '🚗)))
+     (println)
+     (println (if (== 1 (:prize-1 m2)) "you won!" "you lost"))
+     {:result (if (== 1 (:prize-1 m2)) '🚗 '🐐)
+      :model l}
+     )))
+
+
+(defn sprinkler
+  "
+
+  "
+  [& {cycles :cycles :as params}]
+  (let
+    [fg (fgtree
+             (:cloudy
+               [:sprinkler|cloudy
+                [[0.1 0.9]
+                 [0.5 0.5]]
+                (:sprinkler
+                  [:wet-grass|sprinkler&rain
+                   [
+                    [[0.99 0.01] [0.9 0.1]]
+                    [[0.90 0.10] [0.0 1.0]]
+                    ]
+                   (:rain)
+                   (:wet-grass [:p-wet [0.5 0.5]])]
+                  [:p-sprinkler [0.5 0.5]])]
+               [:rain|cloudy
+                [[0.8 0.2]
+                 [0.2 0.8]]
+                (:rain
+                  [:p-rain [0.9 0.1]])]
+               [:p-cloudy [0.5 0.5]]))]
+    (->> fg (exp->fg :sp/sp) (propagate-cycles cycles) marginals)))
+
+(comment
+
+ (let
+    [fg (fgtree
+          (:x
+            [:y|x
+              [[0.1 0.9]
+               [0.9 0.1]]]
+             (:y
+               [:z|y
+                [[0.7 0.3]
+                 [0.3 0.7]]]
+               (:z
+                 [:x|z
+                  [[0.6 0.4]
+                   [0.4 0.6]]]
+                 (:x)))))]
+    (->> fg (exp->fg :sp/sp) (propagate-cycles 7) marginals))
+
+(let
+    [fg (fgtree
+          (:x
+            [:px [0.5 0.5]]
+            [:y|x
+              [[0.1 0.9]
+               [0.9 0.1]]]
+             (:y
+               [:z|y
+                [[0.7 0.3]
+                 [0.3 0.7]]]
+               (:z
+                 [:x|z
+                  [[0.6 0.4]
+                   [0.4 0.6]]]
+                 (:x')))))]
+    (->> fg (exp->fg :sp/sp) propagate marginals))
+
+(sprinkler :cycles 15)
+
+  (lio/view (:graph (exp->fg :sp/sp
+               (fgtree (:cloudy
+                         [:sprinkler|cloudy
+                          [[0.1 0.9]
+                           [0.5 0.5]]
+                          (:sprinkler
+                            [:wet-grass|sprinkler&rain
+                             [
+                              [[0.99 0.01] [0.9 0.1]]
+                              [[0.90 0.10] [0.0 1.0]]
+                              ]
+                             (:rain)
+                             (:wet-grass [:p-wet [0.5 0.5]])]
+                            [:p-sprinkler [0.5 0.5]])]
+                         [:rain|cloudy
+                          [[0.8 0.2]
+                           [0.2 0.8]]
+                          (:rain
+                            [:p-rain [0.5 0.5]])]
+                         [:p-cloudy [0.5 0.5]])))))
+
+
+
+
+  (MHP {})
+
+  (-> (exp->fg :sp/sp (:fg (figure7))) propagate)
+
+)
