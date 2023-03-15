@@ -146,6 +146,8 @@
          (println (if (== 1 (:prize-1 m2)) "you won!" "you lost"))))}
     )))
 
+(defn e= [e x y] (< (abs (- x y)) e))
+
 (defn test-Bayesian-updating
   "
     An example from:
@@ -191,7 +193,7 @@
 
   (require '[criterium.core :refer [quick-bench]])
 
-
+  (m/set-current-implementation :vectorz)
 
 
   ; test Monty Hall Problem
@@ -202,16 +204,6 @@
 
 
   (quick-bench (MHP {:correct-door (rand-int 3) :choose-door (rand-int 3)}))
-
-
-
-
-
-
-
-
-
-
 
 
 

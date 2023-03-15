@@ -51,8 +51,7 @@
     [loom.graph :as lg]
     [loom.alg :as la])
     #?(:cljs (:require-macros
-              [sigmapi.core :refer [fgtree]])
-       :clj (:import [mikera.vectorz Vector])))
+              [sigmapi.core :refer [fgtree]])))
 
 #?(:clj
   (defmacro fgtree [xp]
@@ -77,7 +76,7 @@
   ([p s]
    (if (zero? s)
     p
-    (vec (map (partial * (/ 1 s)) p)))))
+     (mapv (partial * (/ 1 s)) p))))
 
 (defn random-matrix
   "Returns a random matrix of the given shape e.g.  [2 3 4 5]"
@@ -249,11 +248,11 @@
           ]
       {
        :dim-for-node dim-for-node
-       :value        mm
-       :min          (indexed-min mm)
-       :sum          rsum
-       :im           (vec (map (fn [[s c]] [s (zipmap (keys (dissoc dim-for-node to)) c)]) (map indexed-min rsum)))
-       :repr         (list 'min (cons '∑ (cons (:repr (i this)) (map :repr messages))))
+       :value mm
+       :min (indexed-min mm)
+       :sum rsum
+       :im (mapv (fn [[s c]] [s (zipmap (keys (dissoc dim-for-node to)) c)]) (map indexed-min rsum))
+       :repr (list 'min (cons '∑ (cons (:repr (i this)) (map :repr messages))))
        }))
   (<> [this messages to to-msg parent-msg]
     (let [
@@ -408,16 +407,6 @@ max-sum algorithm with the given id")
         edges'  (partition 2 (map nodes' edges))
         ]
     (edges->fg alg edges')))
-
-(defn matrices-as-vectors [fg]
-  (reduce
-    (fn [r [id mat]]
-      (assoc r id
-        {
-          :shape  (m/shape mat)
-          :vector (m/as-vector mat)
-        }))
-    {} (filter (partial satisfies? Factor) (:nodes fg))))
 
 (defn update-factors
   "Replace nodes for the given matrices with new ones"
@@ -669,7 +658,7 @@ max-sum algorithm with the given id")
   (into {}
     (map
       (juxt key
-        (comp (fn [v] (if (== 1 (m/dimensionality v)) (normalize v) (vec (map normalize v)))) val)) m)))
+        (comp (fn [v] (if (== 1 (m/dimensionality v)) (normalize v) (mapv normalize v))) val)) m)))
 
 (defn unnormalized-marginals
   "Returns a map of marginals for the nodes of the given model"
