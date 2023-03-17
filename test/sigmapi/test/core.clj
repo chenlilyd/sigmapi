@@ -202,6 +202,8 @@
 
   (test-Bayesian-updating)
 
+  (MHP {:correct-door (rand-int 3) :choose-door (rand-int 3)})
+
 
   (quick-bench (MHP {:correct-door (rand-int 3) :choose-door (rand-int 3)}))
 
