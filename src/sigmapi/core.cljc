@@ -170,6 +170,7 @@
   ([mat v i f]
    (let [rv (rotate-vec v i f)
          tm (m/transpose mat rv)
+
          ]
     [tm rv
       (rotate-vec v
@@ -215,7 +216,9 @@
   (>< [this messages to]
     (let [
           prod (combine f m/add messages to dim-for-node)
+          _ (println " *" prod)
           sum (m/emap ln- (map m/esum (m/emap P prod)))
+          _ (println " +" sum)
           ]
       {
        :value     sum
