@@ -319,6 +319,7 @@ max-sum algorithm with the given id")
 (deftype VariableNode [id]
   Messaging
   (>< [this messages to]
+    (println "v:" (map (comp m/shape :value) messages))
     {
      :value     (apply m/add (map :value messages))
      :repr      (if (== 1 (count messages)) (:repr (first messages)) (cons '∏ (map :repr messages)))
