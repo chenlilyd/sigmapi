@@ -4,7 +4,8 @@
     [sigmapi.core :as sp :refer :all]
     [clojure.core.matrix :as m]
     [loom.graph :as lg]
-    [loom.alg :as la]))
+    [loom.alg :as la]
+    [criterium.core :refer [quick-bench]]))
 
 (defn test-cbt []
   (let
@@ -201,6 +202,8 @@
 
 
   (test-Bayesian-updating)
+
+  (quick-bench (test-Bayesian-updating))
 
   (MHP {:correct-door (rand-int 3) :choose-door (rand-int 3)})
 

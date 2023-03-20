@@ -216,9 +216,9 @@
   (>< [this messages to]
     (let [
           prod (combine f m/add messages to dim-for-node)
-          _ (println " *" prod)
+          ;_ (println " *" prod)
           sum (m/emap ln- (map m/esum (m/emap P prod)))
-          _ (println " +" sum)
+          ;_ (println " +" sum)
           ]
       {
        :value     sum
@@ -319,7 +319,7 @@ max-sum algorithm with the given id")
 (deftype VariableNode [id]
   Messaging
   (>< [this messages to]
-    (println "v:" (map (comp m/shape :value) messages))
+    ;(println "v:" (map (comp m/shape :value) messages))
     {
      :value     (apply m/add (map :value messages))
      :repr      (if (== 1 (count messages)) (:repr (first messages)) (cons '∏ (map :repr messages)))
