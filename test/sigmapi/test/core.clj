@@ -187,6 +187,36 @@
        :experiment experiment
      }))
 
+(defn test-Bayesian-updating-speed
+  "
+    An example from:
+    https://ocw.mit.edu/courses/mathematics/18-05-introduction-to-probability-and-statistics-spring-2014/readings/MIT18_05S14_Reading11.pdf
+    part 4 Updating again and again
+  "
+  []
+  (let
+    [model
+     {:fg
+      (sp/fgtree
+        (:d [:pd [0.5 0.5]]
+          [:h|d
+           [
+            [0.5 0.4 0.1]
+            [0.5 0.6 0.9]
+            ]
+           (:h [:ph [0.4 0.4 0.2]])
+           ]))
+      :priors
+      {:h :ph :d :pd}}
+     experiment
+       (assoc model :data
+         [
+          {:pd [0 1]}
+          {:pd [0 1]}
+          ])
+     ]
+    (quick-bench (-> experiment sp/updated-variables :marginals))))
+
 
 (comment
 
@@ -196,6 +226,11 @@
 
   (m/set-current-implementation :vectorz)
 
+  (let [t (m/matrix (m/reshape (repeatedly 24 rand) [3 2 4]))]
+    (quick-bench (indexed-max t)))
+
+  (let [t (t/-> (repeatedly 24 rand) [3 2 4])]
+    (quick-bench (indexed-max t)))
 
   ; test Monty Hall Problem
   (frequencies (repeatedly 1024 (fn [] (:result (MHP {:correct-door (rand-int 3) :choose-door (rand-int 3)})))))
@@ -203,7 +238,7 @@
 
   (test-Bayesian-updating)
 
-  (quick-bench (test-Bayesian-updating))
+  (test-Bayesian-updating-speed)
 
   (MHP {:correct-door (rand-int 3) :choose-door (rand-int 3)})
 
