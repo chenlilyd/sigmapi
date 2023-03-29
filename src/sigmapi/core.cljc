@@ -170,7 +170,6 @@
   ([mat v i f]
    (let [rv (rotate-vec v i f)
          tm (m/transpose mat rv)
-
          ]
     [tm rv
       (rotate-vec v
@@ -216,9 +215,7 @@
   (>< [this messages to]
     (let [
           prod (combine f m/add messages to dim-for-node)
-          ;_ (println " *" prod)
           sum (m/emap ln- (map m/esum (m/emap P prod)))
-          ;_ (println " +" sum)
           ]
       {
        :value     sum
@@ -319,7 +316,6 @@ max-sum algorithm with the given id")
 (deftype VariableNode [id]
   Messaging
   (>< [this messages to]
-    ;(println "v:" (map (comp m/shape :value) messages))
     {
      :value     (apply m/add (map :value messages))
      :repr      (if (== 1 (count messages)) (:repr (first messages)) (cons '∏ (map :repr messages)))
@@ -764,4 +760,4 @@ max-sum algorithm with the given id")
             ]
         (-> model
           (assoc :updated g)
-          (assoc :marginals (normalize-vals (sigmapi.core/unnormalized-marginals (propagate g)))))))
+          (assoc :marginals (normalize-vals (unnormalized-marginals (propagate g)))))))

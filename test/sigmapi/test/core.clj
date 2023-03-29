@@ -2,13 +2,13 @@
   (:require
     [clojure.set :as set]
     [clojure.test :refer [deftest testing is]]
-    [sigmapi.core :as sp :refer :all]
     [clojure.core.matrix :as m]
     [loom.graph :as lg]
     [loom.alg :as la]
     [loom.alg-generic :as lag]
     [loom.io :as lio]
     [loom.gen :as lgen]
+    [sigmapi.core :as sp :refer :all]
     [criterium.core :refer [quick-bench]]))
 
 (defn test-cbt []
@@ -224,50 +224,12 @@
 
 (comment
 
-  (-> (sp/exp->fg :sp/sp
-     '(:d [:pd [0.5 0.5]]
-        [:h|d
-         [
-          [0.5 0.4 0.1]
-          [0.5 0.6 0.9]
-          ]
-         (:h [:ph [0.4 0.4 0.2]])
-         ]))
-    :graph
-    (update :nodeset conj :x)
-    (assoc-in [:adj :x] #{:d :h})
-    lio/view)
-
-  (require '[clojure.set :as set])
-
-  (let [g (lg/digraph [0 1] [1 2] [2 3] [3 4] [4 5] [0 5] [40 0] [50 0] [50 5] [0 60] [5 60])
-        start 0 end 5
-        g' (lg/graph g)]
-    (lio/view g)
-    (->> {:paths [[start]] :visited #{start} :ended []}
-      (iterate (fn [{:keys [paths visited ended]}]
-                 (let [{ended' end growing nil} (group-by (fn [p] (#{end} (peek p))) paths)
-                       new (mapcat (fn [path] (map (fn [n] (conj path n)) (remove (disj visited end) (lg/successors g' (peek path))))) growing)]
-                   {:visited (into visited (map peek new)) :paths new :ended (into ended ended')})))
-      (drop-while (comp seq :paths))
-      first
-      :ended
-      ))
 
 
-
-
-  (lg/successors (lg/digraph [0 1] [1 2] [2 3] [3 4] [4 5] [0 5] [40 0] [50 0] [50 5]) 0)
-
-  (require '[criterium.core :refer [quick-bench]])
-
+  (m/set-current-implementation :clatrix)
   (m/set-current-implementation :vectorz)
 
-  (let [t (m/matrix (m/reshape (repeatedly 24 rand) [3 2 4]))]
-    (quick-bench (indexed-max t)))
 
-  (let [t (t/-> (repeatedly 24 rand) [3 2 4])]
-    (quick-bench (indexed-max t)))
 
   ; test Monty Hall Problem
   (frequencies (repeatedly 1024 (fn [] (:result (MHP {:correct-door (rand-int 3) :choose-door (rand-int 3)})))))
@@ -282,7 +244,11 @@
 
   (quick-bench (MHP {:correct-door (rand-int 3) :choose-door (rand-int 3)}))
 
-  (require '[clojure.algo.graph])
+
+
+
+
+
 
 
 
