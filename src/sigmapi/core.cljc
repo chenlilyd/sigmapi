@@ -46,12 +46,12 @@
   (:require
     [clojure.core.matrix :as m]
     [clojure.set :as set]
-    [clojure.math :as maths :refer [log pow]]
-    [clojure.walk :as walk]
     [loom.graph :as lg]
-    [loom.alg :as la])
+    [loom.alg :as la]
+    [clojure.walk :as walk])
     #?(:cljs (:require-macros
-              [sigmapi.core :refer [fgtree]])))
+              [sigmapi.core :refer [fgtree]])
+       :clj (:import [mikera.vectorz Vector])))
 
 #?(:clj
   (defmacro fgtree [xp]
@@ -61,6 +61,14 @@
          `(~(if (vector? x) `vector `list) ~@x)
          x))
      xp)))
+
+(defn log [x]
+  #?(:clj  (Math/log x)
+     :cljs (js/Math.log x)))
+
+(defn pow [x y]
+  #?(:clj  (Math/pow x y)
+     :cljs (js/Math.pow x y)))
 
 (def log2 (log 2))
 
@@ -76,7 +84,7 @@
   ([p s]
    (if (zero? s)
     p
-     (mapv (partial * (/ 1 s)) p))))
+    (vec (map (partial * (/ 1 s)) p)))))
 
 (defn random-matrix
   "Returns a random matrix of the given shape e.g.  [2 3 4 5]"
@@ -140,7 +148,7 @@
   [f]
   (fn ibf [mat]
     (let [best (f mat)]
-      [best (first (filter (fn [v] (== best (apply m/mget mat v)))
+      [best (first (filter #(= best (apply m/mget mat %))
             (m/index-seq mat)))])))
 
 (def indexed-min (indexed-best m/emin))
@@ -199,7 +207,8 @@
            (let [
                  d (get pnd (dim-for-node id))
                  [tm rv nd] (tranz r dimz d last)
-                 tm #?(:clj (if (vector? tm) (m/matrix tm) tm)
+                 tm #?(:clj
+                       (cond-> tm (not (instance? Vector tm)) m/matrix)
                        :cljs tm)
                  q (g tm v)]
              [q rv (mapv pnd nd)]))
@@ -248,11 +257,11 @@
           ]
       {
        :dim-for-node dim-for-node
-       :value mm
-       :min (indexed-min mm)
-       :sum rsum
-       :im (mapv (fn [[s c]] [s (zipmap (keys (dissoc dim-for-node to)) c)]) (map indexed-min rsum))
-       :repr (list 'min (cons '∑ (cons (:repr (i this)) (map :repr messages))))
+       :value        mm
+       :min          (indexed-min mm)
+       :sum          rsum
+       :im           (vec (map (fn [[s c]] [s (zipmap (keys (dissoc dim-for-node to)) c)]) (map indexed-min rsum)))
+       :repr         (list 'min (cons '∑ (cons (:repr (i this)) (map :repr messages))))
        }))
   (<> [this messages to to-msg parent-msg]
     (let [
@@ -369,7 +378,6 @@ max-sum algorithm with the given id")
     (partial leaf? g)
     (lg/nodes g)))
 
-
 (defn edges->fg
   "
   TODO: need to check shape of graph and
@@ -400,13 +408,15 @@ max-sum algorithm with the given id")
                                  (make-node {:alg alg :type :sp/variable :id id}))])
                          (lg/nodes g)))})))
 
-(defn graph->fg [alg {:keys [nodes edges] :as graph}]
-  (let [nodes' (into {} (concat
-                          (map (fn [id] [id {:id (keyword (str id))}]) (remove nodes edges))
-                          (map (fn [[id matrix]] [id {:id (keyword (str id)) :matrix matrix}]) nodes)))
-        edges'  (partition 2 (map nodes' edges))
-        ]
-    (edges->fg alg edges')))
+(defn matrices-as-vectors [fg]
+  (reduce
+    (fn [r [id mat]]
+      (assoc r id
+        {
+          :shape  (m/shape mat)
+          :vector (m/as-vector mat)
+        }))
+    {} (filter (partial satisfies? Factor) (:nodes fg))))
 
 (defn update-factors
   "Replace nodes for the given matrices with new ones"
@@ -464,14 +474,14 @@ max-sum algorithm with the given id")
                                       (and (leaf? graph n) (satisfies? Factor (nodes n))))
                                     (lg/nodes graph)))))
 
-(defn msgs-from-leaves [{:keys [messages graph nodes leaves] :as model}]
+(defn msgs-from-leaves [{:keys [messages graph nodes] :as model}]
   (reduce
     (fn [r id]
       (let [parent (first (lg/successors graph id))]
         (assoc-in r [:messages parent id]
           (assoc (i (get nodes id))
             :id id :flow :><))))
-    model leaves))
+    model (leaves graph)))
 
 (defn msgs-from-variables [{:keys [messages graph nodes] :as model}]
   (reduce
@@ -562,61 +572,31 @@ max-sum algorithm with the given id")
   (reduce
     (fn [{root? :root :as r} [id msgs]]
       (let [prev-msgs (get-in previous-model [:messages id]) node (get nodes id)]
-        (cond
-          ; messages have arrived on all but one of the edges incident on v
-          (and (not= msgs prev-msgs) (== (count msgs) (dec (lg/out-degree graph id))))
-             (let [parent (first (set/difference (lg/successors graph id) (into #{} (keys msgs))))
-                   node (get nodes id)]
-               (assoc-in r [:messages parent id]
-                 (assoc (>< node (vals (dissoc msgs parent)) parent)
-                  :flow :>< :id id)))
-           ; all messages have arrived
-           (and (not= msgs prev-msgs) (== (count msgs) (lg/out-degree graph id)))
-              (let [[return _] (first (set/difference
+        ; messages have arrived on all but one of the edges incident on v
+        (if (and (not= msgs prev-msgs) (== (count msgs) (dec (lg/out-degree graph id))))
+         (let [parent (first (set/difference (lg/successors graph id) (into #{} (keys msgs))))
+               node (get nodes id)]
+           (assoc-in r [:messages parent id]
+             (assoc (>< node (vals (dissoc msgs parent)) parent)
+              :flow :>< :id id)))
+         ; all messages have arrived
+         (if (and (not= msgs prev-msgs) (== (count msgs) (lg/out-degree graph id)))
+           (let [[return _] (first (set/difference
                                         (into #{} (map (juxt :id :flow) (vals msgs)))
                                         (into #{} (map (juxt :id :flow) (vals prev-msgs)))))]
-                (if (and (pass? node) (= :>< (get-in msgs [return :flow])))
-                  (if root? r (update-in r [:messages id] dissoc return))
-                  (reduce
-                    (fn [r parent]
-                      (assoc
-                        (assoc-in r [:messages parent id]
-                          (assoc (<> node (vals (dissoc msgs parent)) parent (get msgs parent)
-                                   (if root? (get msgs return) nil))
-                            :flow :<> :id id))
-                        :root id))
-                    r (keys (if root? (dissoc msgs return) msgs)))))
-              :else r)))
-     model messages))
-
-(defn messages-><
-  "Propagate inflowing messages"
-  [{:keys [messages graph nodes] :as model}]
-  (reduce
-    (fn [r [id msgs]]
-      (let [recipients (lg/successors graph id)
-            node (get nodes id)]
-        (reduce
-          (fn [r recipient]
-            (assoc-in r [:messages recipient id]
-             (assoc (>< node (vals (dissoc msgs recipient)) recipient) :flow :>< :id id)))
-          r recipients)))
-     model messages))
-
-(defn messages-<>
-  "Propagate outflowing messages"
-  [{:keys [messages graph nodes] :as model}]
-  (reduce
-    (fn [r [id msgs]]
-      (let [recipients (lg/successors graph id)
-            node (get nodes id)]
-        (reduce
-          (fn [r recipient]
-            (assoc-in r [:messages recipient id]
-             (assoc (<> node (vals (dissoc msgs recipient)) recipient (get msgs recipient) nil)
-               :flow :>< :id id)))
-           r (keys msgs))))
-     model messages))
+             (if (and (pass? node) (= :>< (get-in msgs [return :flow])))
+               (if root? r (update-in r [:messages id] dissoc return))
+               (reduce
+                 (fn [r parent]
+                   (assoc
+                     (assoc-in r [:messages parent id]
+                       (assoc (<> node (vals (dissoc msgs parent)) parent (get msgs parent)
+                          (if root? (get msgs return) nil))
+                          :flow :<> :id id))
+                     :root id))
+                 r (keys (if root? (dissoc msgs return) msgs)))))
+           r))))
+    model messages))
 
 (defn can-message?
   "The algorithm terminates once two messages have been passed
@@ -632,24 +612,23 @@ max-sum algorithm with the given id")
   ([m]
     (propagate message-passing (assoc m :messages {})))
   ([f m]
-   (->> [m (msgs-from-leaves m)]
-     (iterate (fn [[o n]] [n (f o n)]))
-     (take-while (comp can-message? first))
-     last
-     last)))
+    (last
+     (last
+       (take-while (comp can-message? first)
+         (iterate (fn [[o n]] [n (f o n)])
+           [m (msgs-from-leaves m)]))))))
 
 (defn propagate-cycles
   "Propagate messages on the given model's graph
   in both directions"
-  ([n m]
-    (propagate-cycles
-      (comp messages-<> messages-><)
-      n (assoc m :messages {})))
+  ([m n]
+    (propagate-cycles message-passing n (assoc m :messages {})))
   ([f n m]
-   (->> m
-     msgs-from-leaves
-     (iterate f)
-     (take n))))
+    (last
+     (last
+       (take n
+         (iterate (fn [[o n]] [n (f o n)])
+           [m (msgs-from-leaves m)]))))))
 
 (defn maybe-list [x]
   (if (seqable? x) x (list x)))
@@ -658,9 +637,9 @@ max-sum algorithm with the given id")
   (into {}
     (map
       (juxt key
-        (comp (fn [v] (if (== 1 (m/dimensionality v)) (normalize v) (mapv normalize v))) val)) m)))
+        (comp (fn [v] (if (== 1 (m/dimensionality v)) (normalize v) (vec (map normalize v)))) val)) m)))
 
-(defn unnormalized-marginals
+(defn marginals
   "Returns a map of marginals for the nodes of the given model"
   [{:keys [messages graph nodes] :as model}]
   (into {}
@@ -668,14 +647,6 @@ max-sum algorithm with the given id")
       (fn [[id node]]
         [id (vec (m/emap P (maybe-list (:value (<> node (vals (get messages id)) nil nil nil)))))])
       (filter (comp (fn [n] (satisfies? Variable n)) val) nodes))))
-
-(def marginals
-  (comp normalize-vals unnormalized-marginals))
-
-(defn named-marginals [model marginals]
-  (zipmap
-    (map (:aliases model) (keys marginals))
-    (map (comp (partial apply hash-map) interleave) (map (:states model) (keys marginals)) (vals marginals))))
 
 (defn all-marginals
   "Marginals for all given models"
@@ -687,7 +658,7 @@ max-sum algorithm with the given id")
              (filter
                (comp (fn [n] (satisfies? Variable n)) val)
                (:nodes (first models))))
-        (repeat [])) (map unnormalized-marginals models)))
+        (repeat [])) (map marginals models)))
 
 (defn configuration
   "Returns the total configuration of max-sum for the given model"
@@ -711,7 +682,7 @@ max-sum algorithm with the given id")
 
 (defn compute-marginals [exp]
   (normalize-vals
-    (unnormalized-marginals (propagate (exp->fg :sp/sp exp)))))
+    (marginals (propagate (exp->fg :sp/sp exp)))))
 
 (defn compute-MAP-config [exp]
   (MAP-config
@@ -729,7 +700,31 @@ max-sum algorithm with the given id")
       (fn [[id sequence]] [id (= sequence (get config id))])
       sequence-by-id)))
 
-(defn update-variables [graph post priors data]
+(defn print-msgs [{:keys [messages graph nodes] :as model}]
+  (doseq [[to from msg] (mapcat (fn [[to msgs]] (map (partial cons to) msgs)) messages)]
+    (println from "⟶" to (:flow msg) (:repr msg)
+             "sum: " (m/shape (:sum msg))
+             "dfn: " (:dim-for-node msg)
+             "conf" (:configuration msg)
+             "mind" (:mind msg)
+             "min: " (:min msg))
+    (println "    " "val: " (:value msg) (m/shape (:im msg)) "im: " (:im msg))
+    (println "    " "min" (:min msg) "conf" (:configuration msg))))
+
+(defn msgs [{:keys [messages graph nodes] :as model}]
+  (map
+    (fn ([[to from msg]] {:from from :to to :repr (:repr msg)}))
+    (mapcat (fn [[to msgs]] (map (partial cons to) msgs)) messages)))
+
+(defn msg-diff [om nm]
+  (reduce
+    (fn [r [to msgs]]
+      (assoc-in r [:messages to]
+                (let [diff (set/difference (into #{} (vals msgs)) (into #{} (vals (get-in om [:messages to]))))]
+                  (zipmap (map :id diff) diff))))
+    nm (:messages nm)))
+
+(defn learn-variables [graph post priors data]
   (reductions
     (fn [[g post] data-priors]
       (let [
@@ -737,27 +732,27 @@ max-sum algorithm with the given id")
               p1 (merge (zipmap (vals priors) (map p2 (keys priors))) data-priors)
               g  (update-factors g p1)
             ]
-        [g (normalize-vals (unnormalized-marginals (propagate g)))]))
+        [g (normalize-vals (marginals (propagate g)))]))
     [graph (or post (zipmap (keys priors) (map (comp (partial mapv P) :value i (:nodes graph)) (vals priors))))] data))
 
-(defn updated-variables [{:keys [fg updated marginals priors data] :as model}]
+(defn learned-variables [{:keys [fg learned marginals priors data] :as model}]
   (let [[g m]
           (last
-           (update-variables
-             (or updated (exp->fg :sp/sp fg)) marginals priors data))]
+           (learn-variables
+             (or learned (exp->fg :sp/sp fg)) marginals priors data))]
     (-> model
       (assoc :marginals m)
-      (assoc :updated g))))
+      (assoc :learned g))))
 
-(defn update-priors
-  [{:keys [fg updated marginals priors data] :as model}]
+(defn learn-step
+  [{:keys [fg learned marginals priors data] :as model}]
       (let [
-             {nodes :nodes :as graph} (or updated (exp->fg :sp/sp fg))
+             {nodes :nodes :as graph} (or learned (exp->fg :sp/sp fg))
               post (or marginals (zipmap (keys priors) (map (comp (partial map P) :value i nodes) (map (fn [v] (if (keyword? v) v (last v))) (vals priors)))))
               p2 (select-keys post (keys priors))
               p1 (merge (zipmap (map (fn [v] (if (keyword? v) v (first v))) (vals priors)) (map p2 (keys priors))) data)
               g (update-factors graph p1)
             ]
         (-> model
-          (assoc :updated g)
-          (assoc :marginals (normalize-vals (unnormalized-marginals (propagate g)))))))
+          (assoc :learned g)
+          (assoc :marginals (normalize-vals (sigmapi.core/marginals (propagate g)))))))
